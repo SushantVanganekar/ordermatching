@@ -45,7 +45,7 @@ public class OrderControllerTests {
     }
     
     @Test
-    public void testcase01_whenCreateOrder_thenOk() throws Exception {
+    public void testcase01_whenNewOrder_thenOk() throws Exception {
     	String orderJson1 = "{\"orderType\":\"LIMIT\",\"transactionType\":\"BUY\",\"price\":100.0,\"quantity\":1,\"status\":\"UNMATCHED\"}";
     	String orderJson2 = "{\"orderType\":\"LIMIT\",\"transactionType\":\"BUY\",\"price\":100.5,\"quantity\":10,\"status\":\"UNMATCHED\"}";
     	String orderJson3 = "{\"orderType\":\"LIMIT\",\"transactionType\":\"BUY\",\"price\":100.3,\"quantity\":5,\"status\":\"UNMATCHED\"}";
@@ -58,43 +58,43 @@ public class OrderControllerTests {
     	String orderJson9 = "{\"orderType\":\"MARKET\",\"transactionType\":\"SELL\",\"price\":0.0,\"quantity\":5,\"status\":\"UNMATCHED\"}";
     	String orderJson10 = "{\"orderType\":\"LIMIT\",\"transactionType\":\"SELL\",\"price\":100.0,\"quantity\":1,\"status\":\"UNMATCHED\"}";
     	
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
           .contentType(CONTENT_TYPE)
           .content(orderJson1))
           .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson2))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson3))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson4))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson5))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson6))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson7))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson8))
                 .andExpect(status().isCreated());
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson9))
                 .andExpect(status().isCreated());  
-        this.mockMvc.perform(post("/createOrder")
+        this.mockMvc.perform(post("/newOrder")
                 .contentType(CONTENT_TYPE)
                 .content(orderJson10))
                 .andExpect(status().isCreated());
@@ -102,59 +102,36 @@ public class OrderControllerTests {
     
     @Test
     public void testcase02_whenGetAllOrders_thenOk() throws Exception{
-    	this.mockMvc.perform(get("/getAllOrders"))
+    	this.mockMvc.perform(get("/getCurrentOrderBook"))
         .andExpect(status().isOk())
         .andExpect(content().contentType(CONTENT_TYPE))
-        .andExpect(jsonPath("$", hasSize(10)))
-        .andExpect(jsonPath("$[0].price").value(100.0))
-        .andExpect(jsonPath("$[1].price").value(100.5))
         ;
     }
     
     @Test
     public void testcase03_whenGetAllMatchedOrders_thenOk() throws Exception{
-    	this.mockMvc.perform(get("/getAllMatchedOrders"))
+    	this.mockMvc.perform(get("/match"))
         .andExpect(status().isOk())
         .andExpect(content().contentType(CONTENT_TYPE))
-        .andExpect(jsonPath("$", hasSize(12)))
+        .andExpect(jsonPath("$", hasSize(6)))
         ;
     }
     
-    @Test
-    public void testcase04_whenGetAllNotMatchedOrdersFromOrderBook_thenOk() throws Exception{
-    	this.mockMvc.perform(get("/getAllOrders"))
-        .andExpect(status().isOk())
-        .andExpect(content().contentType(CONTENT_TYPE))
-        .andExpect(jsonPath("$", hasSize(3)))
-        .andExpect(jsonPath("$[0].price").value(100.0))
-        .andExpect(jsonPath("$[1].price").value(100.3))
-        .andExpect(jsonPath("$[2].price").value(105.0))
-        ;
-    }
     
     @Test
-    public void testcase05_whenDeleteOrder_thenOk() throws Exception{
-    	this.mockMvc.perform(delete("/deleteOrder/1"))
+    public void testcase05_whenCancelOrder_thenOk() throws Exception{
+    	this.mockMvc.perform(delete("/cancelOrder/1"))
         .andExpect(status().isOk())
         ;
     }
     
     @Test
-    public void testcase06_whenUpdateOrderThen_Ok() throws Exception{
+    public void testcase06_whenAmendOrderThen_Ok() throws Exception{
     	String orderUpdateJson = "{\"orderNumber\":8,\"orderType\":\"LIMIT\",\"transactionType\":\"SELL\",\"price\":106.0,\"quantity\":10,\"status\":\"UNMACTHED\"}";
-        this.mockMvc.perform(post("/updateOrder")
+        this.mockMvc.perform(post("/amendOrder")
         .contentType(CONTENT_TYPE)
         .content(orderUpdateJson))
         .andExpect(status().isAccepted());
-    }
-    
-   @Test
-    public void testcase07_whenGetALlOrdersAgain_thenOk() throws Exception{
-    	this.mockMvc.perform(get("/getAllOrders"))
-        .andExpect(status().isOk())
-        .andExpect(content().contentType(CONTENT_TYPE))
-        .andExpect(jsonPath("$", hasSize(2)))
-        .andExpect(jsonPath("$[1].price").value(106.0));
     }
 }
 

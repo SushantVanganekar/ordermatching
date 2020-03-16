@@ -1,2 +1,3 @@
 com\demo\ordermatchingengine\OrdermatchingengineApplicationTests.class
 com\demo\ordermatchingengine\OrderControllerTests.class
+com\demo\ordermatchingengine\OrderServiceTests.class

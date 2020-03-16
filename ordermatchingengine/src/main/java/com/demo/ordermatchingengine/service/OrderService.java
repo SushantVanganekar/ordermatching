@@ -1,19 +1,19 @@
 package com.demo.ordermatchingengine.service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.demo.ordermatchingengine.model.MatchedOrder;
 import com.demo.ordermatchingengine.model.Order;
 import com.demo.ordermatchingengine.repository.OrderRepository;
 
@@ -26,12 +26,29 @@ public class OrderService {
 	OrderRepository orderRepository;
 
 	private static Double lastTradedPrice = 100.0;
-	public Order createOrder(Order order){
-		log.info("createOrder :: START");
+
+	public Order newOrder(Order order){
+		log.info("newOrder :: START");
 		order.setTimestamp(new Date());
-		log.info("createOrder :: END");
-		return orderRepository.save(order);
+		if(null!= order && null != order.getOrderType() && order.getOrderType().equals("MARKET") && null != order.getTransactionType()) {
+			if(order.getTransactionType().equals("BUY"))
+				order.setPrice(Double.MAX_VALUE);
+			else
+				order.setPrice(Double.MIN_VALUE);
+			
+		}
+		Order savedOrder = orderRepository.save(order);
+		log.info("newOrder :: END");
+		return savedOrder;
 		
+	}
+	
+	public Map<String, List<Order>>  getCurrentOrderBook(){
+		log.info("getCurrentOrderBook :: START");
+		List<Order> orders = orderRepository.findAll();
+		Map<String, List<Order>> sortedOrderMap = getSortedBuySellOrders(orders);
+		log.info("getCurrentOrderBook :: END");
+		return sortedOrderMap;
 	}
 	
 	public List<Order> getAllOrders(){
@@ -42,148 +59,114 @@ public class OrderService {
 	}
 	
 	
-	public ArrayList<Order> matchOrders(List<Order> orders){
-		log.info("matchOrders :: START");
-		LinkedHashMap<Long,Order> buyOrderMap = new LinkedHashMap<>();
-		LinkedHashMap<Long,Order> sellOrderMap = new LinkedHashMap<>();
+	public ArrayList<MatchedOrder> match(List<Order> orders){
+		log.info("match :: START");
 		
-		for(Order order : orders){
-			String transactionType = order.getTransactionType();
-			if(transactionType!=null){
-				if(transactionType.equals("BUY"))
-					buyOrderMap.put(order.getOrderNumber(), order);
-				else
-					sellOrderMap.put(order.getOrderNumber(), order);
-			}
-		}
-				
-		log.info("Buy Orders before sorting");
-		for(Entry<Long, Order> entry : buyOrderMap.entrySet()){
-			System.out.println(entry.getKey()+" "+entry.getValue());
-		}
+		Map<String, List<Order>> sortedOrdersMap = getSortedBuySellOrders(orders);
+		List<Order> buyOrderSortedList = sortedOrdersMap.get("SortedBuyOrderList");
+		List<Order> sellOrderSortedList = sortedOrdersMap.get("SortedSellOrderList");
 		
-		log.info("Sell Orders before sorting");
-		for(Entry<Long, Order> entry : sellOrderMap.entrySet()){
-			System.out.println(entry.getKey()+" "+entry.getValue());
-		}
-		
-		LinkedHashMap<Long, Order> buyOrderSortedMap = buyOrderMap.entrySet()
-				.stream()
-				.sorted(Entry.<Long,Order>comparingByValue().reversed())
-				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,(e1,e2)->e1,LinkedHashMap::new));
-		LinkedHashMap<Long, Order> sellOrderSortedMap = sellOrderMap.entrySet()
-				.stream()
-				.sorted(Entry.<Long,Order>comparingByValue())
-				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,(e1,e2)->e1,LinkedHashMap::new));
-		
-		log.info("Buy Orders after sorting");
-		for(Entry<Long, Order> entry : buyOrderSortedMap.entrySet()){
-			System.out.println(entry.getKey()+" "+entry.getValue());
-		}
-		
-		log.info("Sell Orders after sorting");
-		for(Entry<Long, Order> entry : sellOrderSortedMap.entrySet()){
-			System.out.println(entry.getKey()+" "+entry.getValue());
-		}
-		
-		
-		ArrayList<Order> matchedOrdersList = new ArrayList<Order>();
-		for(Entry<Long, Order> entry : sellOrderSortedMap.entrySet()){
-			ArrayList<Order> matchedOrders = matchSellOrdersWithBuyOrders(entry.getValue(),buyOrderSortedMap);
-			if(null!=matchedOrders){
+		ArrayList<MatchedOrder> matchedOrdersList = new ArrayList<MatchedOrder>();
+		sellOrderSortedList.forEach(sellOrder ->{
+			ArrayList<MatchedOrder> matchedOrders = matchSellOrdersWithBuyOrders(sellOrder,buyOrderSortedList);
+			if(null!=matchedOrders)
 				matchedOrdersList.addAll(matchedOrders);
-			}
-		}
-		
+		});
 		log.info("Matched Orders ::");
-		matchedOrdersList.forEach(order -> System.out.println(order));
+		matchedOrdersList.forEach(order -> log.info(order.toString()));
 			
-		log.info("Buy Orders after Matching");
-		for(Entry<Long, Order> entry : buyOrderSortedMap.entrySet()){
-			Order order = entry.getValue();
-			System.out.println(entry.getKey()+" "+order);
-			if(order.getStatus().equals("MATCHED"))
-				deleteOrder(order.getOrderNumber());
-			if(order.getStatus().equals("UNMATCHED"))
-				updateOrder(order);
-		}
-		
-		log.info("Sell Orders after Matching");
-		for(Entry<Long, Order> entry : sellOrderSortedMap.entrySet()){
-			Order order = entry.getValue();
-			System.out.println(entry.getKey()+" "+order);
-			if(order.getStatus().equals("MATCHED"))
-				deleteOrder(order.getOrderNumber());
-			if(order.getStatus().equals("UNMATCHED"))
-				updateOrder(order);
-		}
+		//log.info("Buy Orders after Matching");
+		buyOrderSortedList.forEach(buyOrder -> {
+			if(buyOrder.getStatus().equals("MATCHED"))
+				cancelOrder(buyOrder.getOrderNumber());
+			if(buyOrder.getStatus().equals("UNMATCHED"))
+				amendOrder(buyOrder);
+		});	
+		//log.info("Sell Orders after Matching");
+		sellOrderSortedList.forEach(sellOrder -> {
+			if(sellOrder.getStatus().equals("MATCHED"))
+				cancelOrder(sellOrder.getOrderNumber());
+			if(sellOrder.getStatus().equals("UNMATCHED"))
+				amendOrder(sellOrder);
+		});
 		
 		log.info("Updated Order Book");
 		List<Order> updatedOrderList = orderRepository.findAll();
 		updatedOrderList.forEach(order -> {
-			System.out.println(order);
+			log.info(order.toString());
 			
 		});
-		log.info("matchOrders :: END");
+		
+		log.info("match :: END");
 		return matchedOrdersList;
 	}
 	
+	private Map<String, List<Order>> getSortedBuySellOrders(List<Order> orders){
+		log.info("getSortedBuySellOrders :: START");
+		List<Order> buyOrderList = new ArrayList<Order>();
+		List<Order> sellOrderList = new ArrayList<Order>();
+		Map<String, List<Order>> sortedOrdersMap = new HashMap<String, List<Order>>();
+		for(Order order : orders){
+			String transactionType = order.getTransactionType();
+			if(transactionType!=null){
+				if(transactionType.equals("BUY"))
+					buyOrderList.add(order);
+				else
+					sellOrderList.add(order);
+			}
+		}
+		log.info("Buy Orders before sorting");
+		buyOrderList.forEach(buyOrder -> log.info(buyOrder.toString()));
+		
+		log.info("Sell Orders before sorting");
+		sellOrderList.forEach(sellOrder -> log.info(sellOrder.toString()));
+		
+		Collections.sort(buyOrderList, Collections.reverseOrder());
+		Collections.sort(sellOrderList);
+		
+		log.info("Buy Orders after sorting");
+		buyOrderList.forEach(buyOrder -> log.info(buyOrder.toString()));
+		
+		log.info("Sell Orders after sorting");
+		sellOrderList.forEach(sellOrder -> log.info(sellOrder.toString()));
+		
+		sortedOrdersMap.put("SortedBuyOrderList", buyOrderList);
+		sortedOrdersMap.put("SortedSellOrderList", sellOrderList);
+		log.info("getSortedBuySellOrders :: END");
+		return sortedOrdersMap;
+	}
 	
-	private ArrayList<Order> matchSellOrdersWithBuyOrders(Order sellOrder, LinkedHashMap<Long,Order> buyOrderSortedMap){
+	
+	private ArrayList<MatchedOrder> matchSellOrdersWithBuyOrders(Order sellOrder, List<Order> buyOrderSortedList){
 		log.info("matchSellOrdersWithBuyOrders :: START");
-		ArrayList<Order> matchedOrders = new ArrayList<>();
+		ArrayList<MatchedOrder> matchedOrders = new ArrayList<>();
 		Double matchedSellPrice;
-		for(Entry<Long, Order> buyEntry : buyOrderSortedMap.entrySet()){
-			Order buyOrder = buyEntry.getValue();
+		for(Order buyOrder : buyOrderSortedList){
 			if(sellOrder.getPrice() <= buyOrder.getPrice() && !buyOrder.getStatus().equals("MATCHED")){
 				Integer sellQuantity = sellOrder.getQuantity();
 				Integer buyQuantity = buyOrder.getQuantity();
-				
+				matchedSellPrice = calculateMatchedPrice(buyOrder.getOrderType(),sellOrder.getOrderType(),buyOrder.getPrice(), sellOrder.getPrice());
 				//If sell order and buy order quantities are equal then mark both orders as MATCHED
 				if(sellQuantity == buyQuantity){
 					buyOrder.setStatus("MATCHED");
 					sellOrder.setStatus("MATCHED");
-					//buyOrder.setQuantity(0);
-					//sellOrder.setQuantity(0);
-					if(buyOrder.getOrderType().equals("MARKET")){
-						buyOrder.setPrice(lastTradedPrice);
-						sellOrder.setPrice(lastTradedPrice);
-					}else{
-						sellOrder.setPrice(buyOrder.getPrice());
-					}
-					matchedOrders.add(buyOrder);
-					matchedOrders.add(sellOrder);
-					
+					matchedOrders.add(new MatchedOrder(sellOrder.getOrderNumber(), buyOrder.getOrderNumber(), 
+					sellOrder.getOrderType(), buyOrder.getOrderType(), matchedSellPrice, sellQuantity));
+					break;
 				}else if(sellQuantity > buyQuantity){
 					// If sell quantity is large than buy quantity then buy order can be fully matched
 					// and sell order will be partially matched
-					if(buyOrder.getOrderType().equals("MARKET")){
-						buyOrder.setPrice(lastTradedPrice);
-						matchedSellPrice = lastTradedPrice;
-					}else{
-						matchedSellPrice = buyOrder.getPrice();
-						lastTradedPrice=matchedSellPrice;
-					}
 					buyOrder.setStatus("MATCHED");
-					//buyOrder.setQuantity(0);
-					matchedOrders.add(buyOrder);
-					matchedOrders.add(new Order(sellOrder.getOrderNumber(),sellOrder.getOrderType(),sellOrder.getTransactionType(),matchedSellPrice,buyQuantity,sellOrder.getTimestamp(),"MATCHED"));
+					matchedOrders.add(new MatchedOrder(sellOrder.getOrderNumber(), buyOrder.getOrderNumber(), 
+					sellOrder.getOrderType(), buyOrder.getOrderType(), matchedSellPrice, buyQuantity));
 					sellOrder.setQuantity(sellQuantity-buyQuantity);
 				}else{
 					// If sell quantity is less than buy quantity then sell order can be fully matched
 					// and buy order will be partially matched
-					if(buyOrder.getOrderType().equals("MARKET")){
-						matchedSellPrice = lastTradedPrice;
-					}else{
-						matchedSellPrice = buyOrder.getPrice();
-						lastTradedPrice=matchedSellPrice;
-					}
 					sellOrder.setStatus("MATCHED");
-					//sellOrder.setQuantity(0);
-					sellOrder.setPrice(matchedSellPrice);
-					matchedOrders.add(sellOrder);
 					buyOrder.setQuantity(buyQuantity-sellQuantity);
-					matchedOrders.add(new Order(buyOrder.getOrderNumber(),buyOrder.getOrderType(), buyOrder.getTransactionType(), matchedSellPrice, sellQuantity, buyOrder.getTimestamp(), "MATCHED"));
+					matchedOrders.add(new MatchedOrder(sellOrder.getOrderNumber(), buyOrder.getOrderNumber(), 
+					sellOrder.getOrderType(), buyOrder.getOrderType(), matchedSellPrice, sellQuantity));
 					break;
 				}
 				
@@ -193,16 +176,31 @@ public class OrderService {
 		return matchedOrders;
 	}
 
-	public void deleteOrder(Long orderNumber) {
-		log.info("deleteOrder :: START");
+	private Double calculateMatchedPrice(String buyOrderType, String sellOrderType, Double buyOrderPrice, Double sellOrderPrice) {
+		Double matchedPrice = 0.0;
+		if(buyOrderType.equals("LIMIT")) {
+			matchedPrice = buyOrderPrice;
+			lastTradedPrice = buyOrderPrice;
+		}
+		if(buyOrderType.equals("MARKET") && sellOrderType.equals("MARKET")){
+			matchedPrice = lastTradedPrice;
+		}
+		if(buyOrderType.equals("MARKET") && sellOrderType.equals("LIMIT")){
+			matchedPrice = sellOrderPrice;
+			lastTradedPrice = sellOrderPrice;
+		}		
+		return matchedPrice;
+	}
+	public void cancelOrder(Long orderNumber) {
+		log.info("cancelOrder :: START");
 		orderRepository.deleteById(orderNumber);
-		log.info("deleteOrder :: END");
+		log.info("cancelOrder :: END");
 	}
 
-	public void updateOrder(Order order) {
-		log.info("updateOrder :: START");
+	public void amendOrder(Order order) {
+		log.info("amendOrder :: START");
 		orderRepository.save(order);
-		log.info("updateOrder :: END");
+		log.info("amendOrder :: END");
 	}
 
 	public Optional<Order> findOrder(Long orderNumber) {
